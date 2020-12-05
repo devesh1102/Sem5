@@ -1,0 +1,4 @@
+".\Objects\STARTUP.obj",
+".\Objects\song_lw5.obj" 
+TO ".\Objects\song_lw5" 
+PRINT(".\Listings\song_lw5.m51") RAMSIZE(256) 

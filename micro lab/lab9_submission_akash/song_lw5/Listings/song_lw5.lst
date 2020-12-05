@@ -1,0 +1,339 @@
+C51 COMPILER V9.54   SONG_LW5                                                              10/15/2018 17:58:18 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE SONG_LW5
+OBJECT MODULE PLACED IN .\Objects\song_lw5.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.exe song_lw5.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\
+                    -song_lw5.lst) TABS(2) OBJECT(.\Objects\song_lw5.obj)
+
+line level    source
+
+   1          /**
+   2           SPI HOMEWORK2 , LABWORK2 (SAME PROGRAM)
+   3           */
+   4          
+   5          /* @section  I N C L U D E S */
+   6          #include "at89c5131.h"
+   7          #include "stdio.h"
+   8          #define LCD_data  P2                // LCD Data port
+   9          #define sample 1
+  10          void SPI_Init();
+  11          void LCD_Init();
+  12          void Timer_Init();
+  13          void LCD_DataWrite(char dat);
+  14          void LCD_CmdWrite(char cmd);
+  15          void LCD_StringWrite(char * str, unsigned char len);
+  16          void LCD_Ready();
+  17          void sdelay(int delay);
+  18          void display_value();
+  19          void display_voltage_lcd();
+  20          void delay_ms(int delay);
+  21          char int_to_string(int val);
+  22          void sample_data(int no_of_samples);
+  23          void binary_to_ascii(int binary);
+  24          sbit CS_BAR = P3^4;                 // Chip Select for the ADC
+  25          sbit FS = P3^5;                 // Frame Select for the ADC
+  26          sbit LCD_rs = P0^0;                 // LCD Register Select
+  27          sbit LCD_rw = P0^1;                 // LCD Read/Write
+  28          sbit LCD_en = P0^2;                 // LCD Enable
+  29          sbit LCD_busy = P2^7;               // LCD Busy Flag
+  30          sbit LED = P1^7;
+  31          sbit ONULL = P1^0;
+  32          bit transmit_completed= 0;              // To check if spi data transmit is complete
+  33          bit offset_null = 0;                // Check if offset nulling is enabled
+  34          bit roundoff = 0;
+  35          bit send_data= 0;             // To check if spi data transmit is complete
+  36          bit going_up= 1;  
+  37          
+  38          
+  39          unsigned int  voltage= 0, sending_voltage=0;
+  40          
+  41          
+  42          unsigned char serial_data;
+  43          unsigned char data_high;
+  44          unsigned char data_low;
+  45          unsigned char data_msb=0;
+  46          unsigned char data_lsb=0;
+  47          unsigned char count=0, i=0;
+  48          float fweight=0;
+  49          int counter=0;
+  50          int counter2=0;
+  51          char state=0;
+  52          char square= 0; 
+  53          
+  54          char freq_high=0;
+C51 COMPILER V9.54   SONG_LW5                                                              10/15/2018 17:58:18 PAGE 2   
+
+  55          char freq_low=0;
+  56          int x=2;
+  57          unsigned char voltage_display_ascii[4];
+  58          
+  59          char test [] = {0xEF,0xBE,  0xF1,0x8C,  0xF2,0xFE,  0xF3,0xCE,
+  60                          0xF5,0x29,  0xF6,0x3F,  0xF7,0x50,  0xF7,0xDF,
+  61                          0xF7,0xDF,  0xF7,0x50,  0xF6,0x3F,  0xF5,0x29,
+  62                          0xF3,0xCE,  0xF2,0xFE,  0xF1,0x8C,  0xEF,0xBE 
+  63                          
+  64          };
+  65          /**
+  66          
+  67           * FUNCTION_INPUTS:  P1.5(MISO) serial input  
+  68           * FUNCTION_OUTPUTS: P1.7(MOSI) serial output
+  69           *                   P1.4(SSbar)
+  70                               P1.6(SCK)
+  71           */
+  72           
+  73          void main(void)
+  74          {
+  75   1        P3 = 0x00;
+  76   1        CS_BAR = 1; 
+  77   1        FS = 1;
+  78   1      
+  79   1        SPI_Init();
+  80   1        Timer_Init();
+  81   1        
+  82   1        while(1)
+  83   1        {
+  84   2          if(send_data){
+  85   3            
+  86   3          CS_BAR = 0;                               // falling edge of CS bar
+  87   3          FS = 0;
+  88   3          if (!square){
+  89   4        //  if (0){
+  90   4          sending_voltage=0;
+  91   4          }   
+  92   3          else
+  93   3          {
+  94   4            sending_voltage=voltage;
+  95   4          }
+  96   3          
+  97   3          
+  98   3          data_lsb = sending_voltage;
+  99   3          data_msb = sending_voltage>>8;
+ 100   3          SPDAT= data_msb;                      // first 4 bits will be address of the channel. next 4 can be anything
+ 101   3          while(!transmit_completed);               // wait for the transmit complete flag  
+ 102   3          transmit_completed = 0;                   // make the flag 0
+ 103   3          
+ 104   3          SPDAT =data_lsb;                      // here can send anything. doesnt matter. it will not read the address till t
+             -he next cycle starts. or eoc becomes low and high again.
+ 105   3                                            //this we are sending because we are receiving 8 bits, so have to send something. 
+ 106   3          while(!transmit_completed); 
+ 107   3          transmit_completed = 0; 
+ 108   3          FS = 1;
+ 109   3          CS_BAR = 1;    
+ 110   3          send_data=0;
+ 111   3          }
+ 112   2        }
+ 113   1      
+ 114   1      }
+ 115          
+C51 COMPILER V9.54   SONG_LW5                                                              10/15/2018 17:58:18 PAGE 3   
+
+ 116          /**
+ 117           * FUNCTION_PURPOSE:interrupt
+ 118           * FUNCTION_INPUTS: void
+ 119           * FUNCTION_OUTPUTS: transmit_complete is software transfert flag
+ 120           */
+ 121          void it_SPI(void) interrupt 9 /* interrupt address is 0x004B, (Address -3)/8 = interrupt no.*/
+ 122          {
+ 123   1        switch  ( SPSTA )         /* read and clear spi status register */
+ 124   1        {
+ 125   2          case 0x80:  
+ 126   2            serial_data=SPDAT;   /* read receive data */
+ 127   2            transmit_completed=1;/* set software flag */
+ 128   2          break;
+ 129   2      
+ 130   2          case 0x10:
+ 131   2            
+ 132   2          break;
+ 133   2        
+ 134   2          case 0x40:
+ 135   2          break;
+ 136   2        }
+ 137   1      }
+ 138          
+ 139          void timer0_ISR (void) interrupt 1
+ 140          {
+ 141   1            TR0 = 0;
+ 142   1          
+ 143   1          TH0 |= 0xFE;   //for  6/2^12
+ 144   1          TL0 |= 0xDB;  // for  6/2^12
+ 145   1          send_data = 1;
+ 146   1          TR0 =1;
+ 147   1        
+ 148   1        if (state==0)
+ 149   1        {
+ 150   2          if (counter<4095){
+ 151   3            voltage++;
+ 152   3            counter++;
+ 153   3          }
+ 154   2            else {
+ 155   3          
+ 156   3          state=1;
+ 157   3          counter=0;
+ 158   3        }
+ 159   2        }
+ 160   1        else if (state==1){
+ 161   2            if (counter<4095){
+ 162   3              counter++;
+ 163   3          }
+ 164   2            else {
+ 165   3          
+ 166   3          state=2;
+ 167   3          counter=0;
+ 168   3        }
+ 169   2      }
+ 170   1        else if (state==2){
+ 171   2          
+ 172   2          if (counter<4095){
+ 173   3              if (counter2==2)
+ 174   3              {
+ 175   4                counter++;
+ 176   4                voltage--;
+ 177   4                counter2=0;
+C51 COMPILER V9.54   SONG_LW5                                                              10/15/2018 17:58:18 PAGE 4   
+
+ 178   4              }       
+ 179   3              else counter2++;
+ 180   3              
+ 181   3          }
+ 182   2            else {
+ 183   3          
+ 184   3          state=0;
+ 185   3          counter=0;
+ 186   3      
+ 187   3            freq_high = test[x];
+ 188   3            x++;
+ 189   3            freq_low = test[x];
+ 190   3            x++;
+ 191   3            
+ 192   3            if (x==32)
+ 193   3              x=0;
+ 194   3        }
+ 195   2          
+ 196   2        }
+ 197   1        
+ 198   1      
+ 199   1      
+ 200   1        return;
+ 201   1      
+ 202   1      }
+ 203          
+ 204          void timer1_ISR (void) interrupt 3
+ 205          {
+ 206   1            TR1 = 0;
+ 207   1          
+ 208   1          TH1 = freq_high;   //for  240Hz
+ 209   1          TL1 = freq_low; // for  240Hz
+ 210   1          
+ 211   1          if(square==0)
+ 212   1            square=1;
+ 213   1          else
+ 214   1            square=0;
+ 215   1          
+ 216   1          TR1 =1;
+ 217   1        return;
+ 218   1      
+ 219   1      }
+ 220          
+ 221          /**
+ 222          
+ 223           * FUNCTION_INPUTS:  P1.5(MISO) serial input  
+ 224           * FUNCTION_OUTPUTS: P1.7(MOSI) serial output
+ 225           *                   P1.4(SSbar)
+ 226                               P1.6(SCK)
+ 227           */ 
+ 228          void SPI_Init()
+ 229          {
+ 230   1        CS_BAR = 1;                     // DISABLE ADC SLAVE SELECT-CS 
+ 231   1        SPCON |= 0x20;                  // P1.1(SSBAR) is available as standard I/O pin 
+ 232   1        SPCON |= 0x01;                  // Fclk Periph/4 AND Fclk Periph=12MHz ,HENCE SCK IE. BAUD RATE=3000KHz 
+ 233   1        SPCON |= 0x10;                  // Master mode 
+ 234   1        SPCON |= 0x08;                // CPOL=1; transmit mode example|| SCK is 0 at idle state
+ 235   1        SPCON &= ~0x04;                 // CPHA=0; transmit mode example 
+ 236   1        IEN1 |= 0x04;                   // enable spi interrupt 
+ 237   1        EA=1;                           // enable interrupts 
+ 238   1        SPCON |= 0x40;                  // run spi;ENABLE SPI INTERFACE SPEN= 1 
+ 239   1      
+C51 COMPILER V9.54   SONG_LW5                                                              10/15/2018 17:58:18 PAGE 5   
+
+ 240   1      //  IPH0 |=0x10;
+ 241   1      //  IPL0 |=0x10;
+ 242   1      }
+ 243          
+ 244          void Timer_Init()
+ 245          {
+ 246   1        // Set Timer0 to work in up counting 16 bit mode. Counts upto 
+ 247   1        // 65536 depending upon the values of TH0 and TL0
+ 248   1        // The timer counts 65536 processor cycles. A processor cycle is 
+ 249   1        // 12 clocks. FOr 24 MHz, it takes 65536/2 uS to overflow
+ 250   1          
+ 251   1          TH0 |= 0xFE;   //for  5000
+ 252   1          TL0 |= 0xDB;  // for 5000
+ 253   1          TH1 |= test[0];   //for  5000
+ 254   1          TL1 |= test[1]; // for 5000
+ 255   1          
+ 256   1          TMOD|=0X11;
+ 257   1          EA=1;
+ 258   1          ET0=1;
+ 259   1          ET1=1;
+ 260   1          TR0=1;
+ 261   1          TR1=1;
+ 262   1          
+ 263   1          
+ 264   1        //Initialize TH0
+ 265   1        //Initialize TL0
+ 266   1        //Configure TMOD 
+ 267   1        //Set ET0
+ 268   1        //Set TR0
+ 269   1      }
+ 270          /**
+ 271           * FUNCTION_PURPOSE:LCD Initialization
+ 272           * FUNCTION_INPUTS: void
+ 273           * FUNCTION_OUTPUTS: none
+ 274           */
+ 275          
+ 276          /**
+ 277           * FUNCTION_PURPOSE: A delay of 15us for a 24 MHz crystal
+ 278           * FUNCTION_INPUTS: void
+ 279           * FUNCTION_OUTPUTS: none
+ 280           */
+ 281          void sdelay(int delay)
+ 282          {
+ 283   1        char d=0;
+ 284   1        while(delay>0)
+ 285   1        {
+ 286   2          for(d=0;d<5;d++);
+ 287   2          delay--;
+ 288   2        }
+ 289   1      }
+ 290          
+ 291          /**
+ 292           * FUNCTION_PURPOSE: A delay of around 1000us for a 24MHz crystel
+ 293           * FUNCTION_INPUTS: void
+ 294           * FUNCTION_OUTPUTS: none
+ 295           */
+ 296          void delay_ms(int delay)
+ 297          {
+ 298   1        int d=0;
+ 299   1        while(delay>0)
+ 300   1        {
+ 301   2          for(d=0;d<382;d++);
+C51 COMPILER V9.54   SONG_LW5                                                              10/15/2018 17:58:18 PAGE 6   
+
+ 302   2          delay--;
+ 303   2        }
+ 304   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    452    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     61    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      5    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

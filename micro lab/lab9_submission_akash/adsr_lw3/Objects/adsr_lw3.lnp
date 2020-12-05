@@ -1,0 +1,4 @@
+".\Objects\STARTUP.obj",
+".\Objects\adsr_lw3.obj" 
+TO ".\Objects\adsr_lw3" 
+PRINT(".\Listings\adsr_lw3.m51") RAMSIZE(256) 

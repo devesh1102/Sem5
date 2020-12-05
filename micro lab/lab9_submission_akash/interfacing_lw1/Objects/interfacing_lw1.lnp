@@ -1,0 +1,4 @@
+".\Objects\STARTUP.obj",
+".\Objects\interfacing_lw1.obj" 
+TO ".\Objects\interfacing_lw1" 
+PRINT(".\Listings\interfacing_lw1.m51") RAMSIZE(256) 
